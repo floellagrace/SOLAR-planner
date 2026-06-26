@@ -1,0 +1,1480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SOLAR Planner</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCHVT5-Llxs-_87eCWWRKF863op40UvZjo",
+    authDomain: "solar-planner-a3e7a.firebaseapp.com",
+    projectId: "solar-planner-a3e7a",
+    storageBucket: "solar-planner-a3e7a.firebasestorage.app",
+    messagingSenderId: "684221179043",
+    appId: "1:684221179043:web:ce8548309bef2fc9a50b16"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const DOC_REF = doc(db, 'planners', 'main');
+
+  // Expose to main script
+  window._fbSave = async function(state) {
+    try {
+      await setDoc(DOC_REF, { data: JSON.stringify(state) });
+    } catch(e) { console.warn('Firebase save failed:', e); }
+  };
+
+  window._fbLoad = async function() {
+    try {
+      const snap = await getDoc(DOC_REF);
+      if (snap.exists()) return JSON.parse(snap.data().data);
+    } catch(e) { console.warn('Firebase load failed:', e); }
+    return null;
+  };
+
+  window._fbReady = true;
+  // Trigger app load now that Firebase is ready
+  if (window._pendingLoad) window._pendingLoad();
+</script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #ffffff; --bg2: #f7f7f5; --bg3: #f0efe9;
+    --border: #e0ddd6; --border2: #ccc9c0;
+    --text: #1a1a18; --text2: #5a5955; --text3: #888680;
+    --accent: #1a4d8f; --accent-bg: #e8f0fb; --accent-light: #b8cef5;
+    --green: #1e6b3c; --green-bg: #e6f4ed;
+    --amber: #7a4d00; --amber-bg: #fef3dc;
+    --red: #991f1f; --red-bg: #fdeaea;
+    --radius: 6px; --radius-lg: 10px;
+  }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; color: var(--text); background: var(--bg2); min-height: 100vh; }
+
+  /* TOP BAR */
+  .topbar { background: var(--bg); border-bottom: 1px solid var(--border); padding: 0 20px; display: flex; align-items: center; gap: 12px; height: 52px; position: sticky; top: 0; z-index: 100; }
+  .topbar-logo { font-size: 15px; font-weight: 600; color: var(--accent); letter-spacing: -0.02em; white-space: nowrap; }
+  .topbar-divider { width: 1px; height: 24px; background: var(--border); flex-shrink: 0; }
+  .scheme-switcher { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+  .scheme-switcher select { max-width: 280px; font-weight: 500; }
+  .topbar-right { display: flex; gap: 6px; margin-left: auto; flex-shrink: 0; }
+
+  button { font-family: inherit; font-size: 13px; cursor: pointer; border-radius: var(--radius); border: 1px solid var(--border2); background: var(--bg); color: var(--text); padding: 6px 14px; transition: background 0.12s; white-space: nowrap; }
+  button:hover { background: var(--bg3); }
+  button:active { transform: scale(0.98); }
+  .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .btn-primary:hover { background: #153f78; }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+  .btn-danger { background: var(--red-bg); color: var(--red); border-color: #f0b0b0; }
+  .btn-danger:hover { background: #fad5d5; }
+  .btn-ghost { border-color: transparent; background: transparent; color: var(--text2); }
+  .btn-ghost:hover { background: var(--bg3); border-color: var(--border); }
+
+  /* TABS */
+  .tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--bg); padding: 0 24px; }
+  .tab { padding: 10px 18px; font-size: 13px; font-weight: 500; border: none; background: transparent; color: var(--text3); border-bottom: 2px solid transparent; border-radius: 0; margin-bottom: -1px; cursor: pointer; }
+  .tab:hover { color: var(--text); background: transparent; }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* NO SCHEME STATE */
+  #no-scheme { display: none; text-align: center; padding: 80px 24px; }
+  #no-scheme h2 { font-size: 20px; font-weight: 500; margin-bottom: 10px; color: var(--text2); }
+  #no-scheme p { color: var(--text3); margin-bottom: 24px; }
+
+  .main { max-width: 1280px; margin: 0 auto; padding: 24px; }
+  .view { display: none; }
+  .view.active { display: block; }
+
+  input, textarea, select { font-family: inherit; font-size: 13px; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 7px 10px; width: 100%; transition: border-color 0.12s; }
+  input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent-light); box-shadow: 0 0 0 3px rgba(26,77,143,0.08); }
+  textarea { resize: vertical; min-height: 60px; line-height: 1.5; }
+  label { font-size: 12px; color: var(--text2); display: block; margin-bottom: 4px; font-weight: 500; }
+
+  .card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; margin-bottom: 16px; }
+  .card-title { font-size: 13px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+  .form-row { margin-bottom: 14px; }
+
+  .tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px; }
+  .tag-draft { background: var(--bg3); color: var(--text2); border: 1px solid var(--border2); }
+  .tag-ready { background: var(--amber-bg); color: var(--amber); border: 1px solid #f5d080; }
+  .tag-taught { background: var(--green-bg); color: var(--green); border: 1px solid #a3d4b8; }
+
+  /* SOLAR TABLE */
+  .solar-table-wrap { overflow-x: auto; border-radius: var(--radius-lg); border: 1px solid var(--border); }
+  .solar-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 960px; }
+  .solar-table thead th { background: var(--accent); color: #fff; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; padding: 10px 12px; text-align: left; border-right: 1px solid rgba(255,255,255,0.15); }
+  .solar-table thead th:last-child { border-right: none; }
+  .solar-table tbody tr { border-bottom: 1px solid var(--border); }
+  .solar-table tbody tr:last-child { border-bottom: none; }
+  .solar-table tbody tr:hover { background: var(--accent-bg); }
+  .solar-table tbody td { padding: 10px 12px; vertical-align: top; border-right: 1px solid var(--border); }
+  .solar-table tbody td:last-child { border-right: none; }
+  .solar-table .term-row td { background: var(--bg3); font-weight: 600; font-size: 12px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.05em; padding: 6px 12px; }
+  .col-week { width: 70px; } .col-status { width: 90px; } .col-actions { width: 80px; }
+  .cell-text { line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+  .cell-empty { color: var(--text3); font-style: italic; }
+  .editable-cell { cursor: pointer; min-height: 28px; }
+  .editable-cell:hover { background: rgba(26,77,143,0.05); border-radius: 4px; }
+
+  .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  select.filter { width: auto; }
+  .empty-state { text-align: center; padding: 48px 24px; color: var(--text3); }
+  .empty-state p { margin-bottom: 12px; font-size: 15px; }
+
+  /* LESSON PLAN LIST */
+  .lp-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px 20px; margin-bottom: 10px; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; cursor: pointer; transition: border-color 0.12s; }
+  .lp-card:hover { border-color: var(--accent-light); background: var(--accent-bg); }
+  .lp-card-info { flex: 1; min-width: 0; }
+  .lp-card-title { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+  .lp-card-meta { font-size: 12px; color: var(--text3); display: flex; gap: 14px; flex-wrap: wrap; }
+  .lp-card-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+
+
+  /* REFLECTION CARDS */
+  .refl-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px 20px; margin-bottom: 10px; }
+  .refl-card-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 10px; }
+  .refl-card-title { font-weight: 600; font-size: 14px; }
+  .refl-card-meta { font-size: 12px; color: var(--text3); margin-top: 2px; }
+
+  /* MODALS */
+  .modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 200; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 24px 12px; }
+  .modal-backdrop.open { display: flex; }
+  .modal { background: var(--bg); border-radius: var(--radius-lg); border: 1px solid var(--border); width: 680px; max-width: 100%; padding: 24px; margin: auto; }
+  .modal-title { font-size: 16px; font-weight: 600; margin-bottom: 18px; }
+  .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+
+  /* SCHEME MODAL */
+  .scheme-list-item { display: flex; align-items: center; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 8px; gap: 10px; }
+  .scheme-list-item-name { flex: 1; font-weight: 500; }
+  .scheme-list-item-meta { font-size: 12px; color: var(--text3); }
+  .scheme-list-item.active-scheme { border-color: var(--accent-light); background: var(--accent-bg); }
+
+  .toast { position: fixed; bottom: 24px; right: 24px; background: var(--text); color: #fff; font-size: 13px; padding: 10px 18px; border-radius: var(--radius); opacity: 0; transform: translateY(8px); transition: opacity 0.2s, transform 0.2s; z-index: 300; pointer-events: none; }
+  .toast.show { opacity: 1; transform: translateY(0); }
+
+
+  /* RICH TEXT EDITOR */
+  .rte-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--bg); transition: border-color 0.12s; }
+  .rte-wrap:focus-within { border-color: var(--accent-light); box-shadow: 0 0 0 3px rgba(26,77,143,0.08); }
+  .rte-toolbar { display: flex; gap: 2px; padding: 4px 6px; background: var(--bg3); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .rte-btn { font-family: inherit; font-size: 12px; padding: 3px 7px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--text2); cursor: pointer; line-height: 1.4; min-width: 26px; text-align: center; }
+  .rte-btn:hover { background: var(--bg); border-color: var(--border2); color: var(--text); }
+  .rte-btn.active { background: var(--accent-bg); border-color: var(--accent-light); color: var(--accent); }
+  .rte-sep { width: 1px; background: var(--border); margin: 2px 3px; align-self: stretch; }
+  .rte-body { padding: 8px 10px; min-height: 70px; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 13px; line-height: 1.6; color: var(--text); outline: none; }
+  .rte-body ul { padding-left: 20px; list-style: disc; }
+  .rte-body ol { padding-left: 20px; list-style: decimal; }
+  .rte-body li { margin: 2px 0; }
+  .rte-body blockquote { margin-left: 20px; border-left: 3px solid var(--border2); padding-left: 8px; color: var(--text2); }
+  .rte-body [style*="text-align: center"] { text-align: center; }
+  .rte-body [style*="text-align: right"] { text-align: right; }
+  .rte-body p { margin: 0 0 4px; }
+  .rte-body:empty:before { content: attr(data-placeholder); color: var(--text3); pointer-events: none; }
+  /* Display (read-only) rich text in table cells and cards */
+  .rte-display ul { padding-left: 18px; list-style: disc; margin: 2px 0; }
+  .rte-display ol { padding-left: 18px; list-style: decimal; margin: 2px 0; }
+  .rte-display li { margin: 1px 0; }
+  .rte-display p { margin: 0 0 2px; }
+  .rte-display b, .rte-display strong { font-weight: 600; }
+  .rte-display i, .rte-display em { font-style: italic; }
+  .rte-display u { text-decoration: underline; }
+
+  @media (max-width: 700px) { .main { padding: 12px; } .grid2,.grid3 { grid-template-columns: 1fr; } .topbar { flex-wrap: wrap; height: auto; padding: 8px 12px; } }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <span class="topbar-logo">SOLAR Planner</span>
+  <div class="topbar-divider"></div>
+  <div class="scheme-switcher">
+    <select id="scheme-select" onchange="switchScheme(this.value)" style="max-width:260px;font-weight:500">
+      <option value="">— select a scheme —</option>
+    </select>
+    <button class="btn-sm btn-ghost" onclick="openSchemeModal()" title="Manage schemes" style="flex-shrink:0">&#9881; Schemes</button>
+  </div>
+  <div class="topbar-right" style="align-items:center">
+    <span id="cloud-save-ts" style="font-size:11px;color:var(--text3);white-space:nowrap"></span>
+    <button id="cloud-save-btn" onclick="saveToCloud()" style="font-weight:500">&#9729; Save to cloud</button>
+    <button id="local-save-btn" onclick="saveToLocal()">&#128190; Save to device</button>
+    <button onclick="exportData()">&#8659; Backup .json</button>
+    <button onclick="document.getElementById('importFile').click()">&#8657; Restore</button>
+    <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
+  </div>
+</div>
+
+<!-- TABS (hidden when no scheme) -->
+<div class="tabs" id="main-tabs" style="display:none">
+  <button class="tab active" onclick="switchTab('course',this)">Course info</button>
+  <button class="tab" onclick="switchTab('plan',this)">Weekly plan</button>
+  <button class="tab" onclick="switchTab('lessons',this)">Lesson plans</button>
+  <button class="tab" onclick="switchTab('reflect',this)">Reflection</button>
+</div>
+
+<!-- NO SCHEME SELECTED -->
+<div id="no-scheme">
+  <h2>No scheme selected</h2>
+  <p>Create a new scheme for each unit or module, then switch between them anytime.</p>
+  <button class="btn-primary" onclick="openSchemeModal()">+ Create your first scheme</button>
+</div>
+
+<div class="main" id="main-content" style="display:none">
+
+  <!-- COURSE INFO -->
+  <div id="tab-course" class="view active">
+    <div class="card">
+      <div class="card-title">Course details</div>
+      <div class="grid3" style="margin-bottom:14px">
+        <div class="form-row"><label>Lecturer(s)</label><input id="ci-lecturer" oninput="saveCI()"></div>
+        <div class="form-row"><label>Level / course</label><input id="ci-level" placeholder="e.g. EAL Level 2 Award" oninput="saveCI()"></div>
+        <div class="form-row"><label>Units / modules</label><input id="ci-units" placeholder="e.g. U001, U002" oninput="saveCI()"></div>
+        <div class="form-row"><label>Day &amp; time</label><input id="ci-day" placeholder="e.g. Friday 9am" oninput="saveCI()"></div>
+        <div class="form-row"><label>Room(s)</label><input id="ci-room" placeholder="e.g. HTG07" oninput="saveCI()"></div>
+        <div class="form-row"><label>DFE accountability</label><input id="ci-dfe" oninput="saveCI()"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Fundamental T&amp;L approaches</div>
+      <textarea id="ci-approaches" rows="5" placeholder="e.g. Cold-calling; retrieval practice; think-pair-share..." oninput="saveCI()"></textarea>
+    </div>
+  </div>
+
+  <!-- WEEKLY PLAN -->
+  <div id="tab-plan" class="view">
+    <div class="toolbar">
+      <select class="filter" id="term-filter" onchange="renderTable()">
+        <option value="all">All terms</option>
+        <option value="Term 1">Term 1</option>
+        <option value="Term 2">Term 2</option>
+        <option value="Term 3">Term 3</option>
+        <option value="Year 2">Year 2</option>
+      </select>
+      <select class="filter" id="status-filter" onchange="renderTable()">
+        <option value="all">All statuses</option>
+        <option value="draft">Draft</option>
+        <option value="ready">Ready</option>
+        <option value="taught">Taught</option>
+      </select>
+      <span style="font-size:12px;color:var(--text3)" id="week-count"></span>
+      <button onclick="exportXlsx()" style="margin-left:auto">&#8659; Export .xlsx</button>
+      <button onclick="exportPdf()">&#8659; Export .pdf</button>
+      <button class="btn-primary" onclick="openAddModal()">+ Add week</button>
+      <button onclick="document.getElementById('docxImportFile').click()" title="Import weeks from a SOLAR .docx file">&#8657; Import from .docx</button>
+      <input type="file" id="docxImportFile" accept=".docx,.doc" style="display:none" onchange="importFromDocx(event)">
+    </div>
+    <div class="solar-table-wrap">
+      <table class="solar-table">
+        <thead><tr>
+          <th class="col-week">Week</th><th class="col-status">Status</th>
+          <th>Personal &amp; professional development</th><th>Topics</th>
+          <th>Aims &amp; objectives</th><th>Teaching &amp; learning activities / resources</th>
+          <th>Assessment</th><th class="col-actions"></th>
+        </tr></thead>
+        <tbody id="plan-tbody"></tbody>
+      </table>
+    </div>
+    <div id="plan-empty" class="empty-state" style="display:none">
+      <p>No weeks planned yet.</p>
+      <button class="btn-primary" onclick="openAddModal()">+ Add your first week</button>
+    </div>
+  </div>
+
+  <!-- LESSON PLANS -->
+  <div id="tab-lessons" class="view">
+    <div class="toolbar">
+      <span style="font-size:12px;color:var(--text3)" id="lp-count"></span>
+      <button class="btn-primary" style="margin-left:auto" onclick="newLesson()">+ Add lesson plan</button>
+    </div>
+    <div id="lp-list"></div>
+    <div id="lp-empty" class="empty-state" style="display:none">
+      <p>No lesson plans yet.</p>
+      <button class="btn-primary" onclick="newLesson()">+ Create your first lesson plan</button>
+    </div>
+  </div>
+
+    <!-- REFLECTION -->
+  <div id="tab-reflect" class="view">
+    <div class="toolbar">
+      <span style="font-size:12px;color:var(--text3)" id="refl-count"></span>
+      <button class="btn-primary" style="margin-left:auto" onclick="newReflection()">+ Add reflection</button>
+    </div>
+    <div id="refl-list"></div>
+    <div id="refl-empty" class="empty-state" style="display:none">
+      <p>No reflections yet.</p>
+      <button class="btn-primary" onclick="newReflection()">+ Add your first reflection</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- SCHEME MANAGER MODAL -->
+<div class="modal-backdrop" id="scheme-backdrop" onclick="closeSchemeModalBackdrop(event)">
+  <div class="modal" style="width:560px">
+    <div class="modal-title">Manage schemes</div>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:16px">Each scheme has its own course info, weekly plan, lesson plans and reflections.</p>
+    <div id="scheme-list-items"></div>
+    <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:4px">
+      <div style="display:flex;gap:8px">
+        <input id="new-scheme-name" placeholder="Scheme name, e.g. EAL Level 2 — Engineering" style="flex:1">
+        <button class="btn-primary" onclick="createScheme()">+ Create</button>
+      </div>
+    </div>
+    <div class="modal-footer" style="padding-top:12px;margin-top:12px">
+      <button onclick="closeSchemeModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- LESSON PLAN MODAL -->
+<div class="modal-backdrop" id="lp-modal-backdrop" onclick="closeLessonModalBackdrop(event)">
+  <div class="modal">
+    <div class="modal-title" id="lp-modal-title">Add lesson plan</div>
+    <div class="grid2" style="margin-bottom:14px">
+      <div class="form-row"><label>Date</label><input type="date" id="lm-date"></div>
+      <div class="form-row"><label>Topic</label><input id="lm-topic" placeholder="e.g. Engineering sectors"></div>
+    </div>
+    <div class="form-row"><label>Learning objectives</label><div class="rte-wrap"><div class="rte-toolbar" data-rte="lm-objectives"></div><div class="rte-body" id="lm-objectives" contenteditable="true" data-placeholder="What will learners know or be able to do by the end of this lesson?" style="min-height:88px"></div></div></div>
+    <div class="form-row"><label>Explanatory input</label><div class="rte-wrap"><div class="rte-toolbar" data-rte="lm-input"></div><div class="rte-body" id="lm-input" contenteditable="true" data-placeholder="How will you introduce and explain the content? e.g. slides, demonstration, modelling..." style="min-height:88px"></div></div></div>
+    <div class="form-row"><label>Activities</label><div class="rte-wrap"><div class="rte-toolbar" data-rte="lm-activities"></div><div class="rte-body" id="lm-activities" contenteditable="true" data-placeholder="What activities will learners complete?" style="min-height:110px"></div></div></div>
+    <div class="modal-footer">
+      <button onclick="closeLessonModal()">Cancel</button>
+      <button class="btn-sm btn-danger" id="lp-delete-btn" onclick="deleteLessonFromModal()" style="margin-right:auto;display:none">Delete</button>
+      <button class="btn-primary" onclick="saveLesson()">Save lesson plan</button>
+    </div>
+  </div>
+</div>
+
+<!-- WEEK MODAL -->
+<div class="modal-backdrop" id="modal-backdrop" onclick="closeModalOnBackdrop(event)">
+  <div class="modal">
+    <div class="modal-title" id="modal-title">Add week</div>
+    <div class="grid3">
+      <div class="form-row"><label>Term</label>
+        <select id="m-term"><option>Term 1</option><option>Term 2</option><option>Term 3</option><option>Year 2</option></select>
+      </div>
+      <div class="form-row"><label>Week number</label><input type="number" id="m-week" min="1"></div>
+      <div class="form-row"><label>Status</label>
+        <select id="m-status"><option value="draft">Draft</option><option value="ready">Ready</option><option value="taught">Taught</option></select>
+      </div>
+    </div>
+    <div class="form-row"><label>Personal &amp; professional development</label><div class="rte-wrap"><div class="rte-toolbar" data-rte="m-ppd"></div><div class="rte-body" id="m-ppd" contenteditable="true" style="min-height:70px"></div></div></div>
+    <div class="form-row"><label>Topics</label><div class="rte-wrap"><div class="rte-toolbar" data-rte="m-topics"></div><div class="rte-body" id="m-topics" contenteditable="true" style="min-height:70px"></div></div></div>
+    <div class="form-row"><label>Aims &amp; objectives</label><div class="rte-wrap"><div class="rte-toolbar" data-rte="m-aims"></div><div class="rte-body" id="m-aims" contenteditable="true" style="min-height:70px"></div></div></div>
+    <div class="form-row"><label>Teaching &amp; learning activities / resources</label><div class="rte-wrap"><div class="rte-toolbar" data-rte="m-strategies"></div><div class="rte-body" id="m-strategies" contenteditable="true" style="min-height:70px"></div></div></div>
+    <div class="form-row"><label>Assessment</label><div class="rte-wrap"><div class="rte-toolbar" data-rte="m-assessment"></div><div class="rte-body" id="m-assessment" contenteditable="true" style="min-height:70px"></div></div></div>
+    <div class="modal-footer">
+      <button onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" onclick="saveModal()">Save week</button>
+    </div>
+  </div>
+</div>
+
+<!-- REFLECTION MODAL -->
+<div class="modal-backdrop" id="refl-backdrop" onclick="closeReflOnBackdrop(event)">
+  <div class="modal">
+    <div class="modal-title" id="refl-modal-title">Add reflection</div>
+    <div class="grid3" style="margin-bottom:14px">
+      <div class="form-row"><label>Date</label><input type="date" id="rm-date"></div>
+      <div class="form-row"><label>Lesson topic</label><input id="rm-topic"></div>
+      <div class="form-row"><label>Learners present</label><input id="rm-learners" placeholder="e.g. 12 of 15"></div>
+    </div>
+    <div class="form-row"><label>Reflection &amp; evaluation (including learner views)</label><div class="rte-wrap"><div class="rte-toolbar" data-rte="rm-text"></div><div class="rte-body" id="rm-text" contenteditable="true" data-placeholder="What went well? What would you change? What did learners say?" style="min-height:154px"></div></div></div>
+    <div class="modal-footer">
+      <button onclick="closeReflModal()">Cancel</button>
+      <button class="btn-sm btn-danger" id="refl-delete-btn" onclick="deleteReflection()" style="margin-right:auto;display:none">Delete</button>
+      <button class="btn-primary" onclick="saveReflection()">Save reflection</button>
+    </div>
+  </div>
+</div>
+
+<!-- DOCX IMPORT PREVIEW MODAL -->
+<div class="modal-backdrop" id="docx-preview-backdrop" onclick="closeDocxPreviewBackdrop(event)">
+  <div class="modal" style="width:620px">
+    <div class="modal-title">Import from SOLAR .docx</div>
+    <div id="docx-preview-body"></div>
+    <div class="modal-footer">
+      <button onclick="closeDocxPreview()">Cancel</button>
+      <button class="btn-primary" onclick="confirmDocxImport()">Import</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = 'solar-planner-v4';
+
+// STATE: { activeSchemeId, schemes: { [id]: { name, lecturer, level, units, day, room, dfe, approaches, weeks:[], lessons:[], reflections:[] } } }
+let appState = { activeSchemeId: null, schemes: {} };
+let editingWeekId = null, editingLessonId = null, editingReflId = null;
+
+/* ---- PERSISTENCE ---- */
+
+
+function saveToCloud() {
+  if (!window._fbSave) {
+    showToast('Not connected to cloud — check your internet connection');
+    return;
+  }
+  const btn = document.getElementById('cloud-save-btn');
+  if (btn) { btn.textContent = 'Saving…'; btn.disabled = true; }
+  window._fbSave(appState).then(function() {
+    const now = new Date();
+    appState._lastCloudSave = now.toISOString();
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(appState)); } catch(e) {}
+    setSaveState('saved');
+    showToast('Saved to cloud ✓');
+  }).catch(function(e) {
+    setSaveState('error');
+    showToast('Cloud save failed — try again');
+    console.warn('Firebase save error:', e);
+  });
+}
+
+function saveToLocal() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+    const btn = document.getElementById('local-save-btn');
+    if (btn) {
+      const orig = btn.textContent;
+      btn.textContent = '✓ Saved locally';
+      btn.style.background = 'var(--green-bg)';
+      btn.style.color = 'var(--green)';
+      btn.style.borderColor = '#a3d4b8';
+      setTimeout(function() {
+        btn.textContent = orig;
+        btn.style.background = '';
+        btn.style.color = '';
+        btn.style.borderColor = '';
+      }, 2500);
+    }
+    showToast('Saved to this device ✓');
+  } catch(e) {
+    showToast('Local save failed — storage may be full');
+  }
+}
+
+
+function setSaveState(state) {
+  const btn = document.getElementById('cloud-save-btn');
+  const ts = document.getElementById('cloud-save-ts');
+  if (!btn) return;
+  btn.disabled = false;
+  if (state === 'unsaved') {
+    btn.textContent = '☁ Save to cloud';
+    btn.className = 'btn-primary';
+    btn.style.background = '';
+    if (ts) ts.textContent = appState._lastCloudSave ? 'Unsaved changes — last saved ' + formatSaveTime(appState._lastCloudSave) : 'Unsaved changes';
+    if (ts) ts.style.color = 'var(--amber)';
+  } else if (state === 'saved') {
+    btn.textContent = '✓ Saved';
+    btn.className = '';
+    btn.style.background = 'var(--green-bg)';
+    btn.style.color = 'var(--green)';
+    btn.style.borderColor = '#a3d4b8';
+    if (ts) ts.textContent = 'Last saved ' + formatSaveTime(appState._lastCloudSave);
+    if (ts) ts.style.color = 'var(--text3)';
+    // Reset back to normal after 3s
+    setTimeout(function() {
+      btn.textContent = '☁ Save to cloud';
+      btn.className = '';
+      btn.style.background = '';
+      btn.style.color = '';
+      btn.style.borderColor = '';
+    }, 3000);
+  } else if (state === 'error') {
+    btn.textContent = '⚠ Save failed';
+    btn.className = 'btn-danger';
+    if (ts) ts.textContent = 'Could not reach cloud';
+    if (ts) ts.style.color = 'var(--red)';
+  } else if (state === 'idle') {
+    btn.textContent = '☁ Save to cloud';
+    btn.className = '';
+    btn.style.background = '';
+    btn.style.color = '';
+    btn.style.borderColor = '';
+    if (ts) ts.textContent = appState._lastCloudSave ? 'Last saved ' + formatSaveTime(appState._lastCloudSave) : 'Not yet saved to cloud';
+    if (ts) ts.style.color = 'var(--text3)';
+  }
+}
+
+function formatSaveTime(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    const now = new Date();
+    const diff = Math.floor((now - d) / 60000);
+    if (diff < 1) return 'just now';
+    if (diff < 60) return diff + 'm ago';
+    if (diff < 1440) return Math.floor(diff/60) + 'h ago';
+    return d.toLocaleDateString('en-GB', { day:'numeric', month:'short' }) + ' at ' + d.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' });
+  } catch(e) { return ''; }
+}
+
+function showSyncStatus(state) {
+  const el = document.getElementById('sync-status');
+  if (!el) return;
+  if (state === 'loading') { el.textContent = 'Connecting…'; el.style.color = '#888'; }
+  else if (state === 'offline') { el.textContent = 'Offline — local only'; el.style.color = 'var(--amber)'; }
+  else { el.textContent = ''; }
+}
+
+function loadApp() {
+  // Try Firebase first (cloud), fall back to localStorage
+  async function doLoad() {
+    let loaded = false;
+    if (window._fbLoad) {
+      showSyncStatus('loading');
+      const fbData = await window._fbLoad();
+      if (fbData) {
+        appState = fbData;
+        if (!appState.schemes) appState.schemes = {};
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(appState)); } catch(e) {}
+        loaded = true;
+        showSyncStatus('synced');
+      }
+    }
+    if (!loaded) {
+      try { const r = localStorage.getItem(STORAGE_KEY); if (r) appState = JSON.parse(r); } catch(e) {}
+      if (!appState.schemes) appState.schemes = {};
+      if (!window._fbLoad) showSyncStatus('offline');
+    }
+    renderSchemeSelect();
+    if (appState.activeSchemeId && appState.schemes[appState.activeSchemeId]) {
+      activateScheme(appState.activeSchemeId);
+    } else {
+      showNoScheme();
+    }
+    setSaveState('idle');
+  }
+  // If Firebase module not ready yet, wait for it
+  if (window._fbReady) {
+    doLoad();
+  } else {
+    window._pendingLoad = doLoad;
+    // Fallback: if Firebase takes >3s, load from localStorage anyway
+    setTimeout(function() {
+      if (!window._fbReady) {
+        window._fbReady = true;
+        window._fbLoad = null;
+        doLoad();
+      }
+    }, 3000);
+  }
+}
+function saveApp() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(appState)); } catch(e) {}
+  // Mark as having unsaved cloud changes
+  setSaveState('unsaved');
+}
+
+function scheme() { return appState.schemes[appState.activeSchemeId] || null; }
+
+/* ---- SCHEME MANAGEMENT ---- */
+function renderSchemeSelect() {
+  const sel = document.getElementById('scheme-select');
+  const cur = appState.activeSchemeId;
+  const ids = Object.keys(appState.schemes);
+  sel.innerHTML = '<option value="">— select a scheme —</option>' +
+    ids.map(id => `<option value="${id}" ${id===cur?'selected':''}>${esc(appState.schemes[id].name||'Untitled')}</option>`).join('');
+}
+
+function switchScheme(id) {
+  if (!id) { showNoScheme(); appState.activeSchemeId = null; saveApp(); return; }
+  appState.activeSchemeId = id;
+  saveApp();
+  activateScheme(id);
+}
+
+function activateScheme(id) {
+  const s = appState.schemes[id];
+  if (!s) { showNoScheme(); return; }
+  document.getElementById('no-scheme').style.display = 'none';
+  document.getElementById('main-content').style.display = 'block';
+  document.getElementById('main-tabs').style.display = 'flex';
+  // reset to course tab
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-course').classList.add('active');
+  document.querySelectorAll('.tab')[0].classList.add('active');
+  populateCourse();
+  renderTable();
+  renderLessonList();
+  renderReflectionList();
+  renderSchemeSelect();
+}
+
+function showNoScheme() {
+  document.getElementById('no-scheme').style.display = 'block';
+  document.getElementById('main-content').style.display = 'none';
+  document.getElementById('main-tabs').style.display = 'none';
+}
+
+function openSchemeModal() {
+  renderSchemeListItems();
+  document.getElementById('new-scheme-name').value = '';
+  // Attach delegated click handler for scheme action buttons
+  const listEl = document.getElementById('scheme-list-items');
+  listEl.onclick = function(e) {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const action = btn.getAttribute('data-action');
+    const id = btn.getAttribute('data-id');
+    if (action === 'switch') { switchScheme(id); closeSchemeModal(); }
+    else if (action === 'rename') { renameScheme(id); }
+    else if (action === 'delete') { deleteScheme(id); }
+  };
+  document.getElementById('scheme-backdrop').classList.add('open');
+}
+function closeSchemeModal() { document.getElementById('scheme-backdrop').classList.remove('open'); }
+function closeSchemeModalBackdrop(e) { if (e.target===document.getElementById('scheme-backdrop')) closeSchemeModal(); }
+
+function renderSchemeListItems() {
+  const ids = Object.keys(appState.schemes);
+  const el = document.getElementById('scheme-list-items');
+  if (ids.length === 0) {
+    el.innerHTML = '<p style="color:var(--text3);font-size:13px;margin-bottom:12px">No schemes yet. Create one below.</p>';
+    return;
+  }
+  el.innerHTML = ids.map(id => {
+    const s = appState.schemes[id];
+    const isActive = id === appState.activeSchemeId;
+    const weeks = (s.weeks||[]).length, lessons = (s.lessons||[]).length;
+    const switchBtn = !isActive ? `<button class="btn-sm btn-primary" data-action="switch" data-id="${id}">Switch to</button>` : '';
+    return `<div class="scheme-list-item ${isActive?'active-scheme':''}">
+      <div style="flex:1;min-width:0">
+        <div class="scheme-list-item-name">${esc(s.name||'Untitled')} ${isActive?'<span style="font-size:11px;color:var(--accent);font-weight:600">&#9679; active</span>':''}</div>
+        <div class="scheme-list-item-meta">${weeks} week${weeks!==1?'s':''} &nbsp;&#183;&nbsp; ${lessons} lesson plan${lessons!==1?'s':''} ${s.level?'&nbsp;&#183;&nbsp;'+esc(s.level):''}</div>
+      </div>
+      <div style="display:flex;gap:6px">
+        ${switchBtn}
+        <button class="btn-sm" data-action="rename" data-id="${id}">Rename</button>
+        <button class="btn-sm btn-danger" data-action="delete" data-id="${id}">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function createScheme() {
+  const name = document.getElementById('new-scheme-name').value.trim();
+  if (!name) { document.getElementById('new-scheme-name').focus(); return; }
+  const id = 'scheme_' + Date.now();
+  appState.schemes[id] = { name, lecturer:'', level:'', units:'', day:'', room:'', dfe:'', approaches:'', weeks:[], lessons:[], reflections:[] };
+  appState.activeSchemeId = id;
+  saveApp();
+  renderSchemeSelect();
+  renderSchemeListItems();
+  document.getElementById('new-scheme-name').value = '';
+  activateScheme(id);
+  closeSchemeModal();
+  showToast('Scheme "' + name + '" created');
+}
+
+function renameScheme(id) {
+  const s = appState.schemes[id]; if (!s) return;
+  const name = prompt('Rename scheme:', s.name);
+  if (!name || !name.trim()) return;
+  s.name = name.trim();
+  saveApp();
+  renderSchemeSelect();
+  renderSchemeListItems();
+  showToast('Scheme renamed');
+}
+
+function deleteScheme(id) {
+  const s = appState.schemes[id]; if (!s) return;
+  if (!confirm('Delete scheme "' + s.name + '"? All data in this scheme will be lost.')) return;
+  delete appState.schemes[id];
+  if (appState.activeSchemeId === id) { appState.activeSchemeId = null; showNoScheme(); }
+  saveApp();
+  renderSchemeSelect();
+  renderSchemeListItems();
+  showToast('Scheme deleted');
+}
+
+/* ---- COURSE INFO ---- */
+function saveCI() {
+  const s = scheme(); if (!s) return;
+  ['lecturer','level','units','day','room','dfe','approaches'].forEach(k => {
+    const el = document.getElementById('ci-'+k); if (el) s[k] = el.value;
+  });
+  saveApp();
+  renderSchemeSelect(); // update name in dropdown if level changed
+}
+
+function populateCourse() {
+  const s = scheme(); if (!s) return;
+  ['lecturer','level','units','day','room','dfe','approaches'].forEach(k => {
+    const el = document.getElementById('ci-'+k); if (el) el.value = s[k]||'';
+  });
+}
+
+/* ---- TABS ---- */
+function switchTab(name, btn) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  btn.classList.add('active');
+}
+
+/* ---- WEEKLY PLAN ---- */
+function renderTable() {
+  const s = scheme(); if (!s) return;
+  const termF = document.getElementById('term-filter').value;
+  const statusF = document.getElementById('status-filter').value;
+  const filtered = (s.weeks||[]).filter(w =>
+    (termF==='all'||w.term===termF) && (statusF==='all'||(w.status||'draft')===statusF));
+  document.getElementById('week-count').textContent = filtered.length + ' week' + (filtered.length!==1?'s':'');
+  const tbody = document.getElementById('plan-tbody');
+  const empty = document.getElementById('plan-empty');
+  if (filtered.length===0) { tbody.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display='none';
+  const grouped = {};
+  filtered.forEach(w => { if (!grouped[w.term]) grouped[w.term]=[]; grouped[w.term].push(w); });
+  const termOrder = ['Term 1','Term 2','Term 3','Year 2'];
+  let html = '';
+  termOrder.forEach(term => {
+    if (!grouped[term]) return;
+    html += `<tr class="term-row"><td colspan="8">${term}</td></tr>`;
+    grouped[term].sort((a,b)=>(+a.week||0)-(+b.week||0)).forEach(w => {
+      const sc = {draft:'tag-draft',ready:'tag-ready',taught:'tag-taught'}[w.status||'draft']||'tag-draft';
+      html += `<tr>
+        <td class="col-week"><strong>W${w.week||'?'}</strong></td>
+        <td class="col-status"><span class="tag ${sc}">${w.status||'draft'}</span></td>
+        <td class="editable-cell" onclick="openEditModal(${w.id})">${rc(w.ppd)}</td>
+        <td class="editable-cell" onclick="openEditModal(${w.id})">${rc(w.topics)}</td>
+        <td class="editable-cell" onclick="openEditModal(${w.id})">${rc(w.aims)}</td>
+        <td class="editable-cell" onclick="openEditModal(${w.id})">${rc(w.strategies)}</td>
+        <td class="editable-cell" onclick="openEditModal(${w.id})">${rc(w.assessment)}</td>
+        <td class="col-actions" style="text-align:center">
+          <button class="btn-sm" onclick="openEditModal(${w.id})" style="margin-bottom:4px;width:100%">Edit</button>
+          <button class="btn-sm btn-danger" onclick="deleteWeek(${w.id})" style="width:100%">Del</button>
+        </td></tr>`;
+    });
+  });
+  tbody.innerHTML = html;
+}
+
+function rc(val) { const clean = (val||'').replace(/<[^>]+>/g,'').trim(); return !clean ? '<span class="cell-empty">—</span>' : '<div class="cell-text rte-display">'+val+'</div>'; }
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function openAddModal() {
+  const s = scheme(); if (!s) return;
+  editingWeekId = null;
+  document.getElementById('modal-title').textContent = 'Add week';
+  document.getElementById('m-term').value = 'Term 1';
+  document.getElementById('m-week').value = (s.weeks||[]).length + 1;
+  document.getElementById('m-status').value = 'draft';
+  ['ppd','topics','aims','strategies','assessment'].forEach(k => { document.getElementById('m-'+k).innerHTML=''; });
+  document.getElementById('modal-backdrop').classList.add('open');
+}
+
+function openEditModal(id) {
+  const s = scheme(); if (!s) return;
+  const w = (s.weeks||[]).find(w=>w.id===id); if (!w) return;
+  editingWeekId = id;
+  document.getElementById('modal-title').textContent = 'Edit week';
+  document.getElementById('m-term').value = w.term||'Term 1';
+  document.getElementById('m-week').value = w.week||'';
+  document.getElementById('m-status').value = w.status||'draft';
+  ['ppd','topics','aims','strategies','assessment'].forEach(k => { document.getElementById('m-'+k).innerHTML = w[k]||''; });
+  document.getElementById('modal-backdrop').classList.add('open');
+}
+
+function closeModal() { document.getElementById('modal-backdrop').classList.remove('open'); }
+function closeModalOnBackdrop(e) { if (e.target===document.getElementById('modal-backdrop')) closeModal(); }
+
+function saveModal() {
+  const s = scheme(); if (!s) return;
+  if (!s.weeks) s.weeks = [];
+  const data = {
+    term: document.getElementById('m-term').value,
+    week: parseInt(document.getElementById('m-week').value)||s.weeks.length+1,
+    status: document.getElementById('m-status').value,
+    ppd: document.getElementById('m-ppd').innerHTML,
+    topics: document.getElementById('m-topics').innerHTML,
+    aims: document.getElementById('m-aims').innerHTML,
+    strategies: document.getElementById('m-strategies').innerHTML,
+    assessment: document.getElementById('m-assessment').innerHTML,
+  };
+  if (editingWeekId) { const idx=s.weeks.findIndex(w=>w.id===editingWeekId); if(idx>-1) s.weeks[idx]={...s.weeks[idx],...data}; }
+  else { data.id = Date.now(); s.weeks.push(data); }
+  saveApp(); renderTable(); closeModal();
+  showToast(editingWeekId?'Week updated':'Week added');
+}
+
+function deleteWeek(id) {
+  const s = scheme(); if (!s) return;
+  if (!confirm('Delete this week?')) return;
+  s.weeks = s.weeks.filter(w=>w.id!==id);
+  saveApp(); renderTable(); showToast('Week deleted');
+}
+
+/* ---- LESSON PLANS ---- */
+function renderLessonList() {
+  const s = scheme(); if (!s) return;
+  const lessons = s.lessons||[];
+  document.getElementById('lp-count').textContent = lessons.length + ' lesson plan' + (lessons.length!==1?'s':'');
+  const list = document.getElementById('lp-list');
+  const empty = document.getElementById('lp-empty');
+  if (lessons.length===0) { list.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display='none';
+  list.innerHTML = [...lessons].sort((a,b)=>(b.id||0)-(a.id||0)).map(l => `
+    <div class="refl-card">
+      <div class="refl-card-header">
+        <div>
+          <div class="refl-card-title">${esc(l.topic||'Untitled lesson')}</div>
+          <div class="refl-card-meta">${[l.date, l.objectives?'Objectives noted':''].filter(Boolean).join(' · ')}</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn-sm" onclick="openLessonModal(${l.id})">Edit</button>
+          <button class="btn-sm btn-danger" onclick="deleteLessonConfirm(${l.id})">Delete</button>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:10px">
+        <div><div style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px">Learning objectives</div><div class="rte-display" style="font-size:13px;line-height:1.6;color:var(--text2)">${l.objectives||'—'}</div></div>
+        <div><div style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px">Explanatory input</div><div class="rte-display" style="font-size:13px;line-height:1.6;color:var(--text2)">${l.input||'—'}</div></div>
+      </div>
+      <div><div style="font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px">Activities</div><div class="rte-display" style="font-size:13px;line-height:1.6;color:var(--text2)">${l.activities||'—'}</div></div>
+    </div>`).join('');
+}
+
+function newLesson() { openLessonModal(null); }
+
+function openLessonModal(id) {
+  editingLessonId = id;
+  const s = scheme();
+  const l = id && s ? (s.lessons||[]).find(l=>l.id===id) : null;
+  document.getElementById('lp-modal-title').textContent = id ? 'Edit lesson plan' : 'Add lesson plan';
+  document.getElementById('lm-date').value = l ? (l.date||'') : new Date().toISOString().slice(0,10);
+  document.getElementById('lm-topic').value = l ? (l.topic||'') : '';
+  document.getElementById('lm-objectives').innerHTML = l ? (l.objectives||'') : '';
+  document.getElementById('lm-input').innerHTML = l ? (l.input||'') : '';
+  document.getElementById('lm-activities').innerHTML = l ? (l.activities||'') : '';
+  document.getElementById('lp-delete-btn').style.display = id ? 'inline-block' : 'none';
+  document.getElementById('lp-modal-backdrop').classList.add('open');
+}
+
+function closeLessonModal() { document.getElementById('lp-modal-backdrop').classList.remove('open'); }
+function closeLessonModalBackdrop(e) { if (e.target===document.getElementById('lp-modal-backdrop')) closeLessonModal(); }
+
+function saveLesson() {
+  const s = scheme(); if (!s) return;
+  if (!s.lessons) s.lessons = [];
+  const data = {
+    date: document.getElementById('lm-date').value,
+    topic: document.getElementById('lm-topic').value,
+    objectives: document.getElementById('lm-objectives').innerHTML,
+    input: document.getElementById('lm-input').innerHTML,
+    activities: document.getElementById('lm-activities').innerHTML,
+  };
+  if (editingLessonId) {
+    const idx = s.lessons.findIndex(l=>l.id===editingLessonId);
+    if (idx>-1) s.lessons[idx] = {...s.lessons[idx],...data};
+  } else { data.id = Date.now(); s.lessons.push(data); }
+  saveApp(); renderLessonList(); closeLessonModal();
+  showToast(editingLessonId ? 'Lesson plan updated' : 'Lesson plan saved');
+}
+
+function deleteLessonConfirm(id) {
+  const s = scheme(); if (!s) return;
+  if (!confirm('Delete this lesson plan?')) return;
+  s.lessons = s.lessons.filter(l=>l.id!==id);
+  saveApp(); renderLessonList(); showToast('Lesson plan deleted');
+}
+
+function deleteLessonFromModal() {
+  const s = scheme(); if (!s) return;
+  if (!confirm('Delete this lesson plan?')) return;
+  s.lessons = s.lessons.filter(l=>l.id!==editingLessonId);
+  saveApp(); renderLessonList(); closeLessonModal(); showToast('Lesson plan deleted');
+}
+
+/* ---- REFLECTIONS ---- */
+function renderReflectionList() {
+  const s = scheme(); if (!s) return;
+  const refls = s.reflections||[];
+  document.getElementById('refl-count').textContent = refls.length + ' reflection' + (refls.length!==1?'s':'');
+  const list = document.getElementById('refl-list');
+  const empty = document.getElementById('refl-empty');
+  if (refls.length===0) { list.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display='none';
+  list.innerHTML = [...refls].sort((a,b)=>(b.id||0)-(a.id||0)).map(r => `
+    <div class="refl-card">
+      <div class="refl-card-header">
+        <div>
+          <div class="refl-card-title">${esc(r.topic||'Reflection')}</div>
+          <div class="refl-card-meta">${[r.date,r.learners?r.learners+' learners present':''].filter(Boolean).join(' · ')}</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn-sm" onclick="openReflModal(${r.id})">Edit</button>
+          <button class="btn-sm btn-danger" onclick="deleteRefl(${r.id})">Delete</button>
+        </div>
+      </div>
+      <div class="rte-display" style="font-size:13px;line-height:1.7;color:var(--text2)">${r.text||''}</div>
+    </div>`).join('');
+}
+
+function newReflection() { openReflModal(null); }
+
+function openReflModal(id) {
+  editingReflId = id;
+  const s = scheme();
+  const r = id && s ? (s.reflections||[]).find(r=>r.id===id) : null;
+  document.getElementById('refl-modal-title').textContent = id?'Edit reflection':'Add reflection';
+  document.getElementById('rm-date').value = r?(r.date||''):new Date().toISOString().slice(0,10);
+  document.getElementById('rm-topic').value = r?(r.topic||''):'';
+  document.getElementById('rm-learners').value = r?(r.learners||''):'';
+  document.getElementById('rm-text').innerHTML = r?(r.text||''):'';
+  document.getElementById('refl-delete-btn').style.display = id?'inline-block':'none';
+  document.getElementById('refl-backdrop').classList.add('open');
+}
+
+function closeReflModal() { document.getElementById('refl-backdrop').classList.remove('open'); }
+function closeReflOnBackdrop(e) { if (e.target===document.getElementById('refl-backdrop')) closeReflModal(); }
+
+function saveReflection() {
+  const s = scheme(); if (!s) return;
+  if (!s.reflections) s.reflections = [];
+  const data = {
+    date:document.getElementById('rm-date').value, topic:document.getElementById('rm-topic').value,
+    learners:document.getElementById('rm-learners').value, text:document.getElementById('rm-text').innerHTML,
+  };
+  if (editingReflId) { const idx=s.reflections.findIndex(r=>r.id===editingReflId); if(idx>-1) s.reflections[idx]={...s.reflections[idx],...data}; }
+  else { data.id=Date.now(); s.reflections.push(data); }
+  saveApp(); renderReflectionList(); closeReflModal();
+  showToast(editingReflId?'Reflection updated':'Reflection saved');
+}
+
+function deleteReflection() {
+  const s = scheme(); if (!s) return;
+  if (!confirm('Delete this reflection?')) return;
+  s.reflections = s.reflections.filter(r=>r.id!==editingReflId);
+  saveApp(); renderReflectionList(); closeReflModal(); showToast('Reflection deleted');
+}
+
+function deleteRefl(id) {
+  const s = scheme(); if (!s) return;
+  if (!confirm('Delete this reflection?')) return;
+  s.reflections = s.reflections.filter(r=>r.id!==id);
+  saveApp(); renderReflectionList(); showToast('Reflection deleted');
+}
+
+/* ---- DOCX IMPORT ---- */
+function importFromDocx(e) {
+  const s = scheme();
+  if (!s) { alert('Please select or create a scheme first.'); return; }
+  const file = e.target.files[0];
+  if (!file) return;
+  e.target.value = '';
+
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    mammoth.convertToHtml({ arrayBuffer: ev.target.result }).then(function(result) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(result.value, 'text/html');
+      const tables = doc.querySelectorAll('table');
+      if (!tables.length) { alert('No tables found in this document.'); return; }
+
+      // Find the main SOLAR weekly plan table — it's the one with 6 columns
+      // Header row: Week/Date | PPD | Topics | Aims & Objectives | T&L Activities | Assessment
+      let weekRows = [];
+      let courseInfo = {};
+      let headerFound = false;
+      let termLabel = 'Term 1';
+
+      // Parse course info from first table (2-row header)
+      const firstTable = tables[0];
+      if (firstTable) {
+        const rows = firstTable.querySelectorAll('tr');
+        rows.forEach(tr => {
+          const cells = [...tr.querySelectorAll('td,th')].map(c => c.innerText||c.textContent||'').map(t => t.trim());
+          if (cells[0] && cells[0].toLowerCase().includes('lecturer')) {
+            courseInfo.lecturer = cells[1]||'';
+            courseInfo.level = cells[3]||'';
+            courseInfo.units = cells[5]||'';
+          }
+          if (cells[0] && cells[0].toLowerCase().includes('day')) {
+            courseInfo.day = cells[1]||'';
+            courseInfo.room = cells[3]||'';
+            courseInfo.dfe = cells[5]||'';
+          }
+        });
+      }
+
+      // Parse T&L approaches from second table (single-row description)
+      if (tables[1]) {
+        const rows = tables[1].querySelectorAll('tr');
+        rows.forEach(tr => {
+          const cells = [...tr.querySelectorAll('td,th')].map(c => c.innerText||c.textContent||'').map(t => t.trim());
+          // First row is the label, second row is the value; skip header-looking rows
+          if (cells[0] && !cells[0].toLowerCase().includes('describe') && !cells[0].toLowerCase().includes('week') && cells[0].length > 3) {
+            if (!courseInfo.approaches) courseInfo.approaches = cells[0];
+          }
+          // The main data table has 6 cols: week | ppd | topics | aims | t&l | assessment
+          if (cells.length >= 5 && !cells[0].toLowerCase().includes('week')) {
+            const weekNum = parseInt(cells[0]);
+            if (!isNaN(weekNum) || cells[0].toLowerCase().includes('term') || cells[0].toLowerCase().includes('year')) {
+              if (cells[0].toLowerCase().includes('term') || cells[0].toLowerCase().includes('year')) {
+                termLabel = cells[0];
+              } else if (cells[0].trim() !== '') {
+                weekRows.push({ wk: cells[0], ppd: cells[1], topics: cells[2], aims: cells[3], strategies: cells[4], assessment: cells[5]||'', term: termLabel });
+              }
+            }
+          }
+        });
+      }
+
+      // Also scan all tables for the 6-column week data table
+      tables.forEach((tbl, ti) => {
+        if (ti < 2) return; // already handled
+        const rows = tbl.querySelectorAll('tr');
+        let isWeekTable = false;
+        rows.forEach((tr, ri) => {
+          const cells = [...tr.querySelectorAll('td,th')].map(c => c.innerText||c.textContent||'').map(t => t.trim());
+          if (ri === 0) {
+            const joined = cells.join(' ').toLowerCase();
+            if (joined.includes('week') && (joined.includes('topic') || joined.includes('aim'))) isWeekTable = true;
+          }
+          if (!isWeekTable || ri === 0) return;
+          if (!cells[0]) return;
+          const lower = cells[0].toLowerCase();
+          if (lower.includes('term') || lower.includes('year')) { termLabel = cells[0]; return; }
+          const weekNum = parseInt(cells[0]);
+          if (isNaN(weekNum) && cells[0].length > 20) return; // skip long label rows
+          weekRows.push({ wk: cells[0], ppd: cells[1]||'', topics: cells[2]||'', aims: cells[3]||'', strategies: cells[4]||'', assessment: cells[5]||'', term: termLabel });
+        });
+      });
+
+      // Also try the big combined table (3rd table in this template) which has header + all weeks
+      if (tables[2]) {
+        const bigRows = tables[2].querySelectorAll('tr');
+        termLabel = 'Term 1';
+        bigRows.forEach((tr, ri) => {
+          const cells = [...tr.querySelectorAll('td,th')].map(c => c.innerText||c.textContent||'').map(t => t.trim());
+          if (ri === 0) return; // skip header row
+          if (!cells[0]) return;
+          const lower = cells[0].toLowerCase();
+          if (lower.includes('term') || lower.includes('year')) { termLabel = cells[0]; return; }
+          const weekNum = parseInt(cells[0]);
+          if (!isNaN(weekNum) && cells.length >= 5) {
+            // avoid duplicates
+            const alreadyHas = weekRows.some(w => String(w.wk) === String(cells[0]) && w.topics === (cells[2]||''));
+            if (!alreadyHas) {
+              weekRows.push({ wk: cells[0], ppd: cells[1]||'', topics: cells[2]||'', aims: cells[3]||'', strategies: cells[4]||'', assessment: cells[5]||'', term: termLabel });
+            }
+          }
+        });
+      }
+
+      weekRows = weekRows.filter(w => w.wk && String(w.wk).trim() !== '');
+
+      if (weekRows.length === 0) {
+        alert('Could not find any week rows in this document. Make sure it follows the standard SOLAR template format.');
+        return;
+      }
+
+      // Show preview modal
+      showDocxPreview(weekRows, courseInfo);
+    }).catch(function(err) {
+      alert('Could not read the file: ' + err.message);
+    });
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function showDocxPreview(weekRows, courseInfo) {
+  const preview = weekRows.slice(0, 5).map(w =>
+    `<tr><td style="padding:4px 8px;border:1px solid var(--border);font-size:12px">${esc(String(w.wk))}</td><td style="padding:4px 8px;border:1px solid var(--border);font-size:12px">${esc(w.term)}</td><td style="padding:4px 8px;border:1px solid var(--border);font-size:12px">${esc((w.topics||'').substring(0,60))}${(w.topics||'').length>60?'…':''}</td></tr>`
+  ).join('');
+
+  const more = weekRows.length > 5 ? `<tr><td colspan="3" style="padding:4px 8px;font-size:12px;color:var(--text3)">…and ${weekRows.length-5} more rows</td></tr>` : '';
+
+  const coursePreview = Object.entries(courseInfo).filter(([k,v])=>v).map(([k,v])=>`<span style="font-size:12px"><strong>${k}:</strong> ${esc(v).substring(0,40)}</span>`).join(' &nbsp;·&nbsp; ');
+
+  document.getElementById('docx-preview-body').innerHTML = `
+    ${coursePreview ? `<div style="margin-bottom:12px;padding:10px 12px;background:var(--bg3);border-radius:var(--radius);line-height:1.8">${coursePreview}</div>` : ''}
+    <p style="font-size:13px;margin-bottom:8px;color:var(--text2)">Found <strong>${weekRows.length} week rows</strong>. Preview (first 5):</p>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:12px">
+      <thead><tr>
+        <th style="padding:4px 8px;border:1px solid var(--border);background:var(--bg3);font-size:11px;text-align:left">Week</th>
+        <th style="padding:4px 8px;border:1px solid var(--border);background:var(--bg3);font-size:11px;text-align:left">Term</th>
+        <th style="padding:4px 8px;border:1px solid var(--border);background:var(--bg3);font-size:11px;text-align:left">Topics</th>
+      </tr></thead>
+      <tbody>${preview}${more}</tbody>
+    </table>
+    <div style="margin-bottom:8px">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+        <input type="checkbox" id="docx-import-course" checked> Also import course info (lecturer, level, room etc.)
+      </label>
+    </div>
+    <div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+        <input type="checkbox" id="docx-append" checked> Append to existing weeks (uncheck to replace all)
+      </label>
+    </div>`;
+
+  // Store for confirm step
+  window._docxImportData = { weekRows, courseInfo };
+  document.getElementById('docx-preview-backdrop').classList.add('open');
+}
+
+function confirmDocxImport() {
+  const s = scheme(); if (!s) return;
+  const { weekRows, courseInfo } = window._docxImportData;
+  const append = document.getElementById('docx-append').checked;
+  const importCourse = document.getElementById('docx-import-course').checked;
+
+  if (!append) s.weeks = [];
+  let added = 0;
+  weekRows.forEach((w, i) => {
+    s.weeks.push({
+      id: Date.now() + i,
+      term: w.term || 'Term 1',
+      week: parseInt(w.wk) || (i + 1),
+      status: 'draft',
+      ppd: w.ppd || '',
+      topics: w.topics || '',
+      aims: w.aims || '',
+      strategies: w.strategies || '',
+      assessment: w.assessment || '',
+    });
+    added++;
+  });
+
+  if (importCourse) {
+    ['lecturer','level','units','day','room','dfe','approaches'].forEach(k => {
+      if (courseInfo[k]) s[k] = courseInfo[k];
+    });
+    populateCourse();
+  }
+
+  saveApp();
+  renderTable();
+  closeDocxPreview();
+  showToast(added + ' weeks imported');
+}
+
+function closeDocxPreview() { document.getElementById('docx-preview-backdrop').classList.remove('open'); }
+function closeDocxPreviewBackdrop(e) { if (e.target===document.getElementById('docx-preview-backdrop')) closeDocxPreview(); }
+
+/* ---- EXPORT / IMPORT ---- */
+function exportData() {
+  const blob = new Blob([JSON.stringify(appState,null,2)],{type:'application/json'});
+  const a = document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='solar-planner-'+new Date().toISOString().slice(0,10)+'.json'; a.click();
+  showToast('All schemes exported as JSON');
+}
+
+function importData(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const imported = JSON.parse(ev.target.result);
+      // Support both old single-scheme format and new multi-scheme format
+      if (imported.schemes) {
+        appState = imported;
+        if (!appState.schemes) appState.schemes = {};
+      } else {
+        // old format — wrap as a scheme
+        const id = 'scheme_'+Date.now();
+        const name = (imported.level||imported.lecturer||'Imported scheme');
+        appState.schemes[id] = { name, ...imported };
+        appState.activeSchemeId = id;
+      }
+      saveApp(); 
+      showToast('Imported successfully');
+    } catch { alert('Could not read file.'); }
+  };
+  reader.readAsText(file); e.target.value='';
+}
+
+/* ---- HTML → PLAIN TEXT (for exports) ---- */
+function htmlToPlain(html) {
+  if (!html) return '';
+  const tmp = document.createElement('div');
+  // Pre-process list items to add bullets/numbers before stripping
+  let s = html;
+  // Numbered lists
+  s = s.replace(/<ol[^>]*>/gi, '__OL_START__').replace(/<\/ol>/gi, '__OL_END__');
+  s = s.replace(/<ul[^>]*>/gi, '__UL_START__').replace(/<\/ul>/gi, '__UL_END__');
+  s = s.replace(/<li[^>]*>/gi, '__LI__').replace(/<\/li>/gi, '__LI_END__');
+  s = s.replace(/<\/p>|<br\s*\/?>|<\/div>|<\/tr>/gi, '\n');
+  s = s.replace(/<[^>]+>/g, '');
+  s = s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').replace(/&#8203;/g, '').replace(/&quot;/g, '"');
+  // Process list markers
+  let olCount = 0; let inOl = false; let inUl = false;
+  const lines = s.split('\n');
+  const out = [];
+  lines.forEach(function(line) {
+    line = line.trim();
+    if (line === '__OL_START__') { inOl = true; olCount = 0; return; }
+    if (line === '__OL_END__') { inOl = false; olCount = 0; return; }
+    if (line === '__UL_START__') { inUl = true; return; }
+    if (line === '__UL_END__') { inUl = false; return; }
+    if (line.startsWith('__LI__')) {
+      const txt = line.replace('__LI__','').replace('__LI_END__','').trim();
+      if (!txt) return;
+      if (inOl) { olCount++; out.push(olCount + '. ' + txt); }
+      else { out.push('\u2022 ' + txt); }
+      return;
+    }
+    if (line === '__LI_END__') return;
+    if (line) out.push(line);
+  });
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+
+function exportXlsx() {
+  const wb = XLSX.utils.book_new();
+  const schemeIds = Object.keys(appState.schemes);
+  const termOrder = ['Term 1','Term 2','Term 3','Year 2'];
+
+  schemeIds.forEach(id => {
+    const s = appState.schemes[id];
+    const safeName = (s.name||'Scheme').replace(/[\/\\\?\*\[\]:]/g,'').substring(0,28);
+
+    // Course info sheet per scheme
+    const wsInfo = XLSX.utils.aoa_to_sheet([
+      [s.name||'Unnamed scheme'],
+      [],
+      ['Lecturer(s)', s.lecturer||''], ['Level / Course', s.level||''],
+      ['Units / Modules', s.units||''], ['Day & Time', s.day||''],
+      ['Room(s)', s.room||''], ['DFE Accountability', s.dfe||''],
+      [], ['Teaching & Learning Approaches'], [s.approaches||''],
+    ]);
+    wsInfo['!cols'] = [{wch:26},{wch:60}];
+    XLSX.utils.book_append_sheet(wb, wsInfo, safeName.substring(0,20)+' – Info');
+
+    // Weekly plan
+    const planRows = [['Week','Status','PPD','Topics','Aims & Objectives','T&L Activities / Resources','Assessment']];
+    const sorted = [...(s.weeks||[])].sort((a,b)=>{ const ti=t=>termOrder.indexOf(t); return ti(a.term)!==ti(b.term)?ti(a.term)-ti(b.term):(+a.week||0)-(+b.week||0); });
+    let lastTerm = null;
+    sorted.forEach(w => {
+      if (w.term!==lastTerm) { planRows.push([w.term,'','','','','','']); lastTerm=w.term; }
+      planRows.push(['W'+(w.week||'?'),w.status||'draft',htmlToPlain(w.ppd),htmlToPlain(w.topics),htmlToPlain(w.aims),htmlToPlain(w.strategies),htmlToPlain(w.assessment)]);
+    });
+    const wsPlan = XLSX.utils.aoa_to_sheet(planRows);
+    wsPlan['!cols'] = [{wch:8},{wch:10},{wch:24},{wch:28},{wch:24},{wch:24},{wch:24}];
+    XLSX.utils.book_append_sheet(wb, wsPlan, safeName.substring(0,20)+' – Plan');
+
+    // Lesson plans
+    const lpRows = [['Date','Topic','Learning Objectives','Explanatory Input','Activities']];
+    (s.lessons||[]).forEach(l => {
+      lpRows.push([l.date||'', l.topic||'', htmlToPlain(l.objectives), htmlToPlain(l.input), htmlToPlain(l.activities)]);
+    });
+    const wsLp = XLSX.utils.aoa_to_sheet(lpRows);
+    wsLp['!cols'] = [{wch:12},{wch:28},{wch:40},{wch:40},{wch:40}];
+    XLSX.utils.book_append_sheet(wb, wsLp, safeName.substring(0,20)+' – Lessons');
+
+    // Reflections
+    const reflRows = [['Date','Lesson Topic','Learners Present','Reflection & Evaluation']];
+    [...(s.reflections||[])].sort((a,b)=>(a.date||'').localeCompare(b.date||'')).forEach(r => {
+      reflRows.push([r.date||'',r.topic||'',r.learners||'',htmlToPlain(r.text)]);
+    });
+    const wsRefl = XLSX.utils.aoa_to_sheet(reflRows);
+    wsRefl['!cols'] = [{wch:12},{wch:26},{wch:16},{wch:70}];
+    XLSX.utils.book_append_sheet(wb, wsRefl, safeName.substring(0,20)+' – Reflect');
+  });
+
+  const filename = 'SOLAR-all-schemes-'+new Date().toISOString().slice(0,10)+'.xlsx';
+  XLSX.writeFile(wb, filename);
+  showToast('Downloaded as '+filename);
+}
+
+function exportPdf() {
+  const s = scheme();
+  if (!s) { showToast('No scheme selected'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const margin = 10;
+  const accentR = 26, accentG = 77, accentB = 143;
+
+  doc.setFillColor(accentR, accentG, accentB);
+  doc.rect(margin, margin, pageW - margin*2, 10, 'F');
+  doc.setTextColor(255,255,255);
+  doc.setFontSize(11);
+  doc.setFont('helvetica','bold');
+  doc.text('Scheme of Learning, Assessment and Reflection (SOLAR) - Young People & Adult Learning Programmes', margin + 3, margin + 7);
+
+  const infoY = margin + 13;
+  doc.autoTable({
+    startY: infoY, margin: { left: margin, right: margin }, theme: 'grid',
+    styles: { fontSize: 8, cellPadding: 2, textColor: [26,26,24], lineColor: [200,197,192], lineWidth: 0.3 },
+    body: [
+      ['Lecturer(s)', s.lecturer||'', 'Level / Course', s.level||'', 'Units / Modules', s.units||''],
+      ['Day & Time', s.day||'', 'Room(s)', s.room||'', 'DFE Accountability', s.dfe||''],
+    ],
+    didParseCell: function(data) {
+      if (data.column.index % 2 === 0) { data.cell.styles.fillColor=[240,239,233]; data.cell.styles.fontStyle='bold'; data.cell.styles.fontSize=7; data.cell.styles.textColor=[90,89,85]; }
+    }
+  });
+
+  const afterInfo = doc.lastAutoTable.finalY + 2;
+  if (s.approaches) {
+    doc.autoTable({
+      startY: afterInfo, margin: { left: margin, right: margin }, theme: 'grid',
+      styles: { fontSize: 8, cellPadding: 2, textColor: [26,26,24], lineColor: [200,197,192], lineWidth: 0.3 },
+      body: [[
+        { content: 'Fundamental T&L approaches:', styles: { fontStyle:'bold', fillColor:[240,239,233], textColor:[90,89,85], fontSize:7, cellWidth:50 } },
+        { content: s.approaches||'' }
+      ]],
+    });
+  }
+
+  const termOrder = ['Term 1','Term 2','Term 3','Year 2'];
+  const sorted = [...(s.weeks||[])].sort((a,b) => {
+    const ti = t => termOrder.indexOf(t)===-1 ? 99 : termOrder.indexOf(t);
+    return ti(a.term)!==ti(b.term) ? ti(a.term)-ti(b.term) : (+a.week||0)-(+b.week||0);
+  });
+
+  const body = [];
+  let lastTerm = null;
+  sorted.forEach(w => {
+    if (w.term !== lastTerm) {
+      body.push([{ content: w.term||'', colSpan:7, styles:{ fillColor:[240,239,233], fontStyle:'bold', fontSize:8, textColor:[90,89,85] } }]);
+      lastTerm = w.term;
+    }
+    body.push([
+      'W'+(w.week||'?'), htmlToPlain(w.ppd), htmlToPlain(w.topics), htmlToPlain(w.aims), htmlToPlain(w.strategies), htmlToPlain(w.assessment),
+      { content: w.status||'draft', styles: {
+        fontStyle:'bold', fontSize:7,
+        textColor: w.status==='taught'?[30,107,60]:w.status==='ready'?[122,77,0]:[90,89,85],
+        fillColor: w.status==='taught'?[230,244,237]:w.status==='ready'?[254,243,220]:[240,239,233]
+      }}
+    ]);
+  });
+  if (!body.length) body.push([{ content:'No weeks added yet.', colSpan:7, styles:{fontStyle:'italic',textColor:[136,134,128]} }]);
+
+  const tableStartY = s.approaches ? doc.lastAutoTable.finalY + 3 : afterInfo + 2;
+  doc.autoTable({
+    startY: tableStartY, margin: { left: margin, right: margin }, theme: 'grid',
+    styles: { fontSize: 7.5, cellPadding: 2.5, valign:'top', overflow:'linebreak', textColor:[26,26,24], lineColor:[200,197,192], lineWidth:0.3 },
+    headStyles: { fillColor:[accentR,accentG,accentB], textColor:255, fontStyle:'bold', fontSize:7.5, halign:'left' },
+    columnStyles: { 0:{cellWidth:12}, 1:{cellWidth:36}, 2:{cellWidth:44}, 3:{cellWidth:44}, 4:{cellWidth:50}, 5:{cellWidth:44}, 6:{cellWidth:18} },
+    head: [['Week / Date','Personal & Professional Development - The Confident & Employable Student','Topics','Aims & Objectives (Knowledge, Skills & Behaviours)','Teaching & Learning Activities / Resources - The Evidence-informed Teacher','Assessment','Status']],
+    body: body,
+    didDrawPage: function(data) {
+      doc.setFontSize(7); doc.setTextColor(136,134,128); doc.setFont('helvetica','normal');
+      doc.text((s.name||'SOLAR Planner')+'  -  Page '+data.pageNumber, margin, pageH-5);
+    }
+  });
+
+  const reflY = doc.lastAutoTable.finalY + 4;
+  if (reflY < pageH - 25 && (s.reflections||[]).length) {
+    doc.autoTable({
+      startY: reflY, margin: { left: margin, right: margin }, theme: 'grid',
+      styles: { fontSize:8, cellPadding:2, textColor:[26,26,24], lineColor:[200,197,192], lineWidth:0.3, minCellHeight:18 },
+      body: [[
+        { content:'Reflection: Teacher evaluation, including student views', styles:{ fontStyle:'bold', fillColor:[240,239,233], textColor:[90,89,85], fontSize:7, cellWidth:65 } },
+        { content:(s.reflections||[]).map(r=>[r.date,r.topic,r.learners?r.learners+' present':'',htmlToPlain(r.text)].filter(Boolean).join(' | ')).join('\n\n')||'' }
+      ]],
+    });
+  }
+
+  const filename = 'SOLAR-'+(s.name||'plan').replace(/[^a-zA-Z0-9]/g,'-')+'-'+new Date().toISOString().slice(0,10)+'.pdf';
+  doc.save(filename);
+  showToast('Downloaded as '+filename);
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast'); t.textContent=msg;
+  t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2400);
+}
+
+/* ---- RICH TEXT EDITOR ---- */
+const RTE_TOOLS = [
+  { cmd:'bold',        icon:'<b>B</b>',   title:'Bold' },
+  { cmd:'italic',      icon:'<i>I</i>',   title:'Italic' },
+  { cmd:'underline',   icon:'<u>U</u>',   title:'Underline' },
+  { sep: true },
+  { cmd:'insertUnorderedList', icon:'&#8226;&#8212;', title:'Bullet list' },
+  { cmd:'insertOrderedList',   icon:'1&#8212;',       title:'Numbered list' },
+  { sep: true },
+  { cmd:'indent',      icon:'&#8677;',    title:'Indent' },
+  { cmd:'outdent',     icon:'&#8676;',    title:'Outdent' },
+  { sep: true },
+  { cmd:'justifyLeft',   icon:'&#8676;&#9646;', title:'Align left',   icon:'&#9776;L' },
+  { cmd:'justifyCenter', icon:'&#9776;C',        title:'Align center' },
+  { cmd:'justifyRight',  icon:'&#9776;R',        title:'Align right' },
+];
+
+function initRTE(toolbarEl) {
+  const id = toolbarEl.getAttribute('data-rte');
+  const body = document.getElementById(id);
+  if (!toolbarEl || !body) return;
+  if (toolbarEl.children.length > 0) return; // already initialised
+
+  RTE_TOOLS.forEach(t => {
+    if (t.sep) {
+      const sep = document.createElement('div');
+      sep.className = 'rte-sep';
+      toolbarEl.appendChild(sep);
+      return;
+    }
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'rte-btn';
+    btn.title = t.title;
+    btn.innerHTML = t.icon;
+    btn.onmousedown = function(e) {
+      e.preventDefault();
+      body.focus();
+      document.execCommand(t.cmd, false, null);
+      updateToolbarState(toolbarEl, body);
+    };
+    toolbarEl.appendChild(btn);
+  });
+
+  body.addEventListener('keyup', () => updateToolbarState(toolbarEl, body));
+  body.addEventListener('mouseup', () => updateToolbarState(toolbarEl, body));
+  body.addEventListener('focus', () => updateToolbarState(toolbarEl, body));
+}
+
+function updateToolbarState(toolbarEl, body) {
+  const cmds = ['bold','italic','underline','insertUnorderedList','insertOrderedList','justifyLeft','justifyCenter','justifyRight'];
+  const btns = toolbarEl.querySelectorAll('.rte-btn');
+  let btnIdx = 0;
+  RTE_TOOLS.forEach(t => {
+    if (t.sep) return;
+    const btn = btns[btnIdx++];
+    if (!btn) return;
+    if (cmds.includes(t.cmd)) {
+      try { btn.classList.toggle('active', document.queryCommandState(t.cmd)); } catch(e) {}
+    }
+  });
+}
+
+function initAllRTEs() {
+  document.querySelectorAll('.rte-toolbar[data-rte]').forEach(initRTE);
+}
+
+// Init RTEs when modals open — hook into existing open functions
+const _origOpenAddModal = openAddModal;
+openAddModal = function() { _origOpenAddModal(); setTimeout(initAllRTEs, 50); };
+const _origOpenEditModal = openEditModal;
+openEditModal = function(id) { _origOpenEditModal(id); setTimeout(initAllRTEs, 50); };
+const _origOpenLessonModal = openLessonModal;
+openLessonModal = function(id) { _origOpenLessonModal(id); setTimeout(initAllRTEs, 50); };
+const _origNewReflection = newReflection;
+newReflection = function() { _origNewReflection(); setTimeout(initAllRTEs, 50); };
+const _origOpenReflModal = openReflModal;
+openReflModal = function(id) { _origOpenReflModal(id); setTimeout(initAllRTEs, 50); };
+
+
+loadApp();
+</script>
+</body>
+</html>
